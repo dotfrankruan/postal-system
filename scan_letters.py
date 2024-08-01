@@ -5,6 +5,10 @@ import cv2
 import numpy as np
 from pyzbar.pyzbar import decode
 from PIL import Image
+import tempfile
+
+camera_index = 2
+
 
 def bc_scan_barcode(frame):
     # Convert frame to PIL Image
@@ -79,8 +83,6 @@ def bc_main(camera_index):
 # camera_index = int(input("Enter the number of the camera you want to use: "))
 # print(bc_main(camera_index))
 
-camera_index = 2
-
 def scan_barcode(camera_index):
     while True:
         try:
@@ -101,14 +103,79 @@ def check_registration(number):
 def get_region(region_code):
     if region_code == "CN":
         return "Mainland China"
+    elif region_code == "DE":
+        return "Germany"
+    elif region_code == "RU":
+        return "Russia"
+    elif region_code == "IN":
+        return "India"
+    elif region_code == "FR":
+        return "France"
+    elif region_code == "FI":
+        return "Finland"
+    elif region_code == "LT":
+        return "Lithuania"
+    elif region_code == "US":
+        return "United States"
+    elif region_code == "GB":
+        return "United Kingdom"
+    elif region_code == "HK":
+        return "Hong Kong"
+    elif region_code == "TW":
+        return "Taiwan"
+    elif region_code == "JP":
+        return "Japan"
+    elif region_code == "DE":
+        return "Germany"
+    else:
+        raise NotImplementedError("CURRENT REGION IS NOT IMPLEMENTED")
+    # TODO: TO BE FINISHED
 
 def makedir(barcode, country, mailtype, detailed_region=""):
     if detailed_region == "":
-        os.mkdir("{}/{}/{}".format(country, mailtype, str(barcode)))
+        dirname = country + "/" + mailtype + "/" + str(barcode)
+        os.mkdir(dirname)
     else:
-        os.mkdir("{}/{}/{} ({})".format(country, mailtype, str(barcode), str(detailed_region)))
+        dirname = country + "/" + mailtype + "/" + str(barcode) + " (" + str(detailed_region) + ")"
+        os.mkdir(dirname)
+    return dirname
 
-#def china_letters(number):
+device = 'hpaio:/net/Smart_Tank_510_series?ip=10.10.0.200'
+mode = 'Color'
+outfmt = 'tiff' # By default
+
+def test_scan(x, y, dpi=75, extn="png"):
+    if x == None and y == None:
+        xyprovided = False
+    else:
+        xyprovided = True
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if not xyprovided:
+            os.system("scanimage --format {} -d '{}' --mode {} --resolution {} -p -o {}".format(extn, device, mode, str(dpi), tmpdir + "/sample.{}".format(extn)))
+        else:
+            os.system("scanimage --format {} -d '{}' --mode {} --resolution {} -p -x {} -y {} -o {}".format(extn, device, mode, str(dpi), str(x), str(y), tmpdir + "/sample.{}".format(extn)))
+        os.system("xdg-open {}/sample.{}".format(tmpdir, extn))
+        option = input("Valid scan? (y/n)")
+        if option == 'n':
+            return False
+        else:
+            return True
+    
+def actual_scan(x, y, outfile, dpi, extn):
+    extn = extn.lower()
+    if x == None and y == None:
+        xyprovided = False
+    else:
+        xyprovided = True
+    if not xyprovided:
+        os.system('scanimage --format {} -d "{}" --mode {} --resolution {} -p -o "{}"'.format(extn, device, mode, str(dpi), outfile))
+        print("INFO: FILE SAVED TO ", outfile)
+    else:
+        os.system('scanimage --format {} -d "{}" --mode {} --resolution {} -p -x {} -y {} -o "{}"'.format(extn, device, mode, str(dpi), str(x), str(y), outfile))
+        print("INFO: FILE SAVED TO ", outfile)
+    os.system("xdg-open {}".format(outfile))
+
+dir_made = False
 
 # THIS WILL BE A CLI PROGRAM
 print("WELCOME TO THE POSTAL MANAGEMENT SYSTEM")
@@ -163,7 +230,6 @@ while True:
         except:
             try:
                 region = commands[1].upper()
-                print(region)
                 if len(region) > 2:
                     print("WARNING: YOU SHALL USE ISO-3266-1 ALPHA 2 TO ENTER YOUR REGION CODE")
                     continue
@@ -187,8 +253,11 @@ while True:
         except NameError: # No detailed region
             detailed_region_text = ""
         try:
-            makedir(barcode, get_region(region), mailtype, detailed_region_text)
+            parent_dir = makedir(barcode, get_region(region), mailtype, detailed_region_text)
+            dir_made = True
         except NameError as e:
+            print(e)
+        except FileExistsError as e:
             print(e)
     elif root_command == "TYPE":
         try:
@@ -206,6 +275,64 @@ while True:
             pass
     elif root_command == "QUIT":
         sys.exit(0)
+    elif root_command == "SCAN":
+        if not dir_made:
+            print("WARNING: TARGET DIRECTORY IS NOT MADE YET")
+            continue
+        # THIS PART IS ADAPTED FROM 'cscan', also written by Frank Ruan
+        xyprovided = True
+        try:
+            x = commands[1]
+            y = commands[2]
+        except IndexError:
+            print("WARNING: NO X/Y AXIS SPECIFIED")
+            continue
+        try:
+            int(x)
+            int(y)
+        except ValueError:
+            print("WARNING: INVALID X/Y AXIS")
+            continue
+        if x == 0 or y == 0:
+            # Full-glass scan
+            xyprovided = False
+        try:
+            dpi = commands[3]
+        except IndexError:
+            print("WARNING: NO DPI SPECIFIED")
+            continue
+        try:
+            int(dpi)
+        except ValueError:
+            print("WARNING: INVALID DPI")
+            continue
+        try:
+            filename = commands[4]
+        except IndexError:
+            print("WARNING: NO FILENAME SPECIFIED")
+            continue
+        try:
+            extn = commands[5]
+        except IndexError:
+            print("NOTE: NO OUTPUT FORMAT SPECIFIED, DEFAULTING TO {}".format(outfmt))
+            extn = outfmt
+        filename = parent_dir + "/" + str(filename)
+        while True:
+            res = test_scan(x, y)
+            if not res:
+                nx = input("PROVIDE NEW X AXIS, CURRENTLY {}: ".format(str(x)))
+                if nx == "":
+                    nx = x
+                ny = input("PROVIDE NEW Y AXIS, CURRENTLY {}: ".format(str(y)))
+                if ny == "":
+                    ny = y
+                x, y = nx, ny
+                continue
+            else:
+                print("VALID SCAN WITH X={} and Y={}".format(str(x), str(y)))
+                actual_scan(x, y, filename, dpi, extn.lower())
+                break
+        
     else:
         print("WARNING: INVALID COMMAND")
         continue
